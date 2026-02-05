@@ -1,0 +1,189 @@
+
+import React, { useState } from 'react';
+import { MOCK_DEPLOYMENTS, MOCK_PODS, MOCK_INGRESS, MOCK_SERVICES } from '../constants';
+import { Search, Filter, RefreshCw, Layers, Box, Globe, Share2 } from 'lucide-react';
+
+const K8sExplorer: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'deployments' | 'pods' | 'services' | 'ingress'>('deployments');
+
+  const renderDeployments = () => (
+    <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Namespace</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Replicas</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Age</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Image</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {MOCK_DEPLOYMENTS.map(d => (
+            <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-6 py-4 font-medium text-slate-900">{d.name}</td>
+              <td className="px-6 py-4 text-slate-600">{d.namespace}</td>
+              <td className="px-6 py-4 text-slate-600">{d.replicas}</td>
+              <td className="px-6 py-4">
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${d.status === 'Ready' || d.status === 'Running' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  {d.status}
+                </span>
+              </td>
+              <td className="px-6 py-4 text-slate-600">{d.age}</td>
+              <td className="px-6 py-4 text-xs text-slate-500 font-mono truncate max-w-xs">{d.image}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderPods = () => (
+    <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Restarts</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Age</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {MOCK_PODS.map(p => (
+            <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-6 py-4 font-medium text-slate-900">{p.name}</td>
+              <td className="px-6 py-4">
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${p.status === 'Running' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+                  <span className="text-sm text-slate-700 font-medium">{p.status}</span>
+                </span>
+              </td>
+              <td className="px-6 py-4 text-slate-600">{p.restarts}</td>
+              <td className="px-6 py-4 text-slate-600 font-mono text-xs">{p.ip}</td>
+              <td className="px-6 py-4 text-slate-600">{p.age}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderServices = () => (
+    <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Cluster IP</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ports</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Age</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {MOCK_SERVICES.map(s => (
+            <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-6 py-4 font-medium text-slate-900">{s.name}</td>
+              <td className="px-6 py-4 text-slate-600">{s.type}</td>
+              <td className="px-6 py-4 text-slate-600 font-mono text-xs">{s.clusterIP}</td>
+              <td className="px-6 py-4 text-slate-600">{s.ports}</td>
+              <td className="px-6 py-4">
+                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">{s.status}</span>
+              </td>
+              <td className="px-6 py-4 text-slate-600">{s.age}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderIngress = () => (
+    <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Hosts</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Address</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ports</th>
+            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Age</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {MOCK_INGRESS.map(i => (
+            <tr key={i.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-6 py-4 font-medium text-slate-900">{i.name}</td>
+              <td className="px-6 py-4 text-indigo-600 font-medium">{i.hosts}</td>
+              <td className="px-6 py-4 text-slate-600 font-mono text-xs">{i.address}</td>
+              <td className="px-6 py-4 text-slate-600">{i.ports}</td>
+              <td className="px-6 py-4 text-slate-600">{i.age}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="flex bg-white p-1 border border-slate-200 rounded-xl overflow-x-auto">
+          <button 
+            onClick={() => setActiveTab('deployments')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'deployments' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Layers size={18} /> Deployments
+          </button>
+          <button 
+            onClick={() => setActiveTab('pods')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'pods' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Box size={18} /> Pods
+          </button>
+          <button 
+            onClick={() => setActiveTab('services')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'services' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Share2 size={18} /> Services
+          </button>
+          <button 
+            onClick={() => setActiveTab('ingress')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'ingress' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Globe size={18} /> Ingress
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              placeholder="Search resources..."
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <button className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">
+            <Filter size={18} />
+          </button>
+          <button className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-all active:rotate-180">
+            <RefreshCw size={18} />
+          </button>
+        </div>
+      </div>
+
+      <div className="transition-all duration-300">
+        {activeTab === 'deployments' && renderDeployments()}
+        {activeTab === 'pods' && renderPods()}
+        {activeTab === 'services' && renderServices()}
+        {activeTab === 'ingress' && renderIngress()}
+      </div>
+    </div>
+  );
+};
+
+export default K8sExplorer;

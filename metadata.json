@@ -1,0 +1,5 @@
+{
+  "name": "CloudOps Deployer Pro",
+  "description": "A professional CI/CD and Release Management system integrated with Jenkins and Kubernetes, featuring an intelligent Pipeline Wizard and real-time resource monitoring.",
+  "requestFramePermissions": []
+}
