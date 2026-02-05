@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MOCK_JENKINS_JOBS } from '../constants';
 import { ViewMode } from '../types';
 import { Play, FileText, Settings, Search, RefreshCw, CheckCircle2, XCircle, Clock, Ban, X, Terminal, Plus, FolderGit2 } from 'lucide-react';
+import { jenkinsApi } from '../services/api';
 
 interface JenkinsJobsProps {
   onViewChange: (view: ViewMode) => void;
@@ -12,6 +13,26 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
   const [jobs, setJobs] = useState(MOCK_JENKINS_JOBS);
   const [consoleJob, setConsoleJob] = useState<{name: string, logs: string[]} | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 加载 Jenkins 任务
+  useEffect(() => {
+    loadJobs();
+  }, []);
+
+  const loadJobs = async () => {
+    try {
+      setIsLoading(true);
+      const data = await jenkinsApi.getAllJobs();
+      setJobs(data);
+    } catch (error) {
+      console.error('Failed to load Jenkins jobs:', error);
+      // 失败时使用模拟数据
+      setJobs(MOCK_JENKINS_JOBS);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // New Item State
   const [showNewItemModal, setShowNewItemModal] = useState(false);
@@ -70,24 +91,17 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
     }, 3000);
   };
 
-  const handleSync = () => {
+  const handleSync = async () => {
     setIsSyncing(true);
-    
-    // Simulate API sync with random updates
-    setTimeout(() => {
-      setJobs(currentJobs => currentJobs.map(job => {
-        // Randomly update some jobs to simulate state changes from server
-        // This gives visual feedback that a "sync" actually happened
-        if (Math.random() > 0.7 && job.status !== 'IN_PROGRESS') {
-          return {
-            ...job,
-            lastTime: 'Just now' // Simulate that we just checked this job
-          };
-        }
-        return job;
-      }));
+
+    try {
+      await jenkinsApi.syncJobs();
+      await loadJobs();
+    } catch (error) {
+      console.error('Failed to sync Jenkins jobs:', error);
+    } finally {
       setIsSyncing(false);
-    }, 1500);
+    }
   };
 
   const handleCreateJob = () => {

@@ -1,10 +1,41 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MOCK_DEPLOYMENTS, MOCK_PODS, MOCK_INGRESS, MOCK_SERVICES } from '../constants';
 import { Search, Filter, RefreshCw, Layers, Box, Globe, Share2 } from 'lucide-react';
+import { k8sApi } from '../services/api';
+import { Deployment, Pod, Service, Ingress } from '../types';
 
 const K8sExplorer: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'deployments' | 'pods' | 'services' | 'ingress'>('deployments');
+  const [deployments, setDeployments] = useState<Deployment[]>(MOCK_DEPLOYMENTS);
+  const [pods, setPods] = useState<Pod[]>(MOCK_PODS);
+  const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
+  const [ingresses, setIngresses] = useState<Ingress[]>(MOCK_INGRESS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadK8sResources();
+  }, []);
+
+  const loadK8sResources = async () => {
+    try {
+      setIsLoading(true);
+      const [deploymentsData, podsData, servicesData, ingressesData] = await Promise.all([
+        k8sApi.getDeployments().catch(() => MOCK_DEPLOYMENTS),
+        k8sApi.getPods().catch(() => MOCK_PODS),
+        k8sApi.getServices().catch(() => MOCK_SERVICES),
+        k8sApi.getIngresses().catch(() => MOCK_INGRESS),
+      ]);
+      setDeployments(deploymentsData);
+      setPods(podsData);
+      setServices(servicesData);
+      setIngresses(ingressesData);
+    } catch (error) {
+      console.error('Failed to load K8s resources:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const renderDeployments = () => (
     <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl">
@@ -20,7 +51,7 @@ const K8sExplorer: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {MOCK_DEPLOYMENTS.map(d => (
+          {deployments.map(d => (
             <tr key={d.id} className="hover:bg-slate-50 transition-colors">
               <td className="px-6 py-4 font-medium text-slate-900">{d.name}</td>
               <td className="px-6 py-4 text-slate-600">{d.namespace}</td>
@@ -52,7 +83,7 @@ const K8sExplorer: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {MOCK_PODS.map(p => (
+          {pods.map(p => (
             <tr key={p.id} className="hover:bg-slate-50 transition-colors">
               <td className="px-6 py-4 font-medium text-slate-900">{p.name}</td>
               <td className="px-6 py-4">
@@ -85,7 +116,7 @@ const K8sExplorer: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {MOCK_SERVICES.map(s => (
+          {services.map(s => (
             <tr key={s.id} className="hover:bg-slate-50 transition-colors">
               <td className="px-6 py-4 font-medium text-slate-900">{s.name}</td>
               <td className="px-6 py-4 text-slate-600">{s.type}</td>
@@ -115,7 +146,7 @@ const K8sExplorer: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {MOCK_INGRESS.map(i => (
+          {ingresses.map(i => (
             <tr key={i.id} className="hover:bg-slate-50 transition-colors">
               <td className="px-6 py-4 font-medium text-slate-900">{i.name}</td>
               <td className="px-6 py-4 text-indigo-600 font-medium">{i.hosts}</td>

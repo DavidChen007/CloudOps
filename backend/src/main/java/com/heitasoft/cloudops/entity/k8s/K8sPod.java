@@ -1,6 +1,7 @@
 
 package com.heitasoft.cloudops.entity.k8s;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -25,6 +26,7 @@ public class K8sPod {
 
     // 3NF: A Pod usually belongs to a controller (Deployment/ReplicaSet)
     // We map it loosely here by name convention or explicit ID if available
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "deployment_id")
     private K8sDeployment deployment;

@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Activity, Server, Clock, CheckCircle2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { dashboardApi } from '../services/api';
 
 const data = [
   { name: 'Mon', builds: 12, success: 10 },
@@ -14,15 +15,40 @@ const data = [
 ];
 
 const Dashboard: React.FC = () => {
+  const [stats, setStats] = useState({
+    activePipelines: 24,
+    healthyPods: 142,
+    avgBuildTime: '4m 12s',
+    successRate: '94.2%'
+  });
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      const data = await dashboardApi.getStats();
+      setStats({
+        activePipelines: data.activePipelines || 24,
+        healthyPods: data.healthyPods || 142,
+        avgBuildTime: data.avgBuildTime || '4m 12s',
+        successRate: data.successRate || '94.2%'
+      });
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Active Pipelines', value: '24', icon: <Activity className="text-indigo-500" />, trend: '+12%', trendUp: true },
-          { label: 'Healthy Pods', value: '142', icon: <Server className="text-green-500" />, trend: '98%', trendUp: true },
-          { label: 'Avg Build Time', value: '4m 12s', icon: <Clock className="text-orange-500" />, trend: '-20s', trendUp: false },
-          { label: 'Success Rate', value: '94.2%', icon: <CheckCircle2 className="text-emerald-500" />, trend: '+2.1%', trendUp: true },
+          { label: 'Active Pipelines', value: String(stats.activePipelines), icon: <Activity className="text-indigo-500" />, trend: '+12%', trendUp: true },
+          { label: 'Healthy Pods', value: String(stats.healthyPods), icon: <Server className="text-green-500" />, trend: '98%', trendUp: true },
+          { label: 'Avg Build Time', value: stats.avgBuildTime, icon: <Clock className="text-orange-500" />, trend: '-20s', trendUp: false },
+          { label: 'Success Rate', value: stats.successRate, icon: <CheckCircle2 className="text-emerald-500" />, trend: '+2.1%', trendUp: true },
         ].map((stat, i) => (
           <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">

@@ -13,8 +13,9 @@ import java.util.List;
 public class K8sController {
 
     @Autowired private K8sDeploymentRepository deploymentRepo;
-    // Assume repositories exist for Pod, Service, Ingress similarly for brevity
-    // In a full implementation, you would create repositories for all.
+    @Autowired private K8sPodRepository podRepo;
+    @Autowired private K8sServiceRepository serviceRepo;
+    @Autowired private K8sIngressRepository ingressRepo;
 
     @GetMapping("/deployments")
     public List<K8sDeployment> getDeployments() {
@@ -26,6 +27,18 @@ public class K8sController {
         return deploymentRepo.save(deployment);
     }
 
-    // Mock endpoints for other resources to satisfy frontend structure
-    // In real implementation, these would fetch from DB or K8s Client
+    @GetMapping("/pods")
+    public List<K8sPod> getPods() {
+        return podRepo.findAll();
+    }
+
+    @GetMapping("/services")
+    public List<K8sService> getServices() {
+        return serviceRepo.findAll();
+    }
+
+    @GetMapping("/ingresses")
+    public List<K8sIngress> getIngresses() {
+        return ingressRepo.findAll();
+    }
 }
