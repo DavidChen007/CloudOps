@@ -59,5 +59,6 @@ export enum ViewMode {
   Dashboard = 'dashboard',
   Wizard = 'wizard',
   K8sExplorer = 'k8s',
-  JenkinsJobs = 'jenkins'
+  JenkinsJobs = 'jenkins',
+  GitCredentials = 'credentials'
 }
