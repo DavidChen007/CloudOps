@@ -139,11 +139,11 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
   };
 
   const handleBuild = async (id: string) => {
-    // 立即更新UI状态为构建中
+    // 立即更新UI状态为队列中
     setJobs(currentJobs =>
       currentJobs.map(job =>
         job.id === id
-          ? { ...job, status: 'IN_PROGRESS', lastDuration: 'Running...', lastTime: 'Just now' }
+          ? { ...job, status: 'QUEUED', lastDuration: 'Queued...', lastTime: 'Just now' }
           : job
       )
     );
@@ -516,9 +516,9 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
                     onClick={() => handleBuild(job.id)}
                     title="Build Now"
                     className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
-                    disabled={job.status === 'IN_PROGRESS'}
+                    disabled={job.status === 'IN_PROGRESS' || job.status === 'QUEUED'}
                   >
-                    <Play size={20} className={job.status === 'IN_PROGRESS' ? 'opacity-50' : ''} />
+                    <Play size={20} className={job.status === 'IN_PROGRESS' || job.status === 'QUEUED' ? 'opacity-50' : ''} />
                   </button>
                   <button
                     onClick={() => openConsolePage(job.id, job.name)}
@@ -563,11 +563,23 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
                 </div>
               </div>
             </div>
-            
+
             {job.status === 'IN_PROGRESS' && (
               <div className="mt-4 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
                 <div
                   className="absolute h-full bg-gradient-to-r from-transparent via-indigo-500 to-transparent"
+                  style={{
+                    width: '50%',
+                    animation: 'slideProgress 2s ease-in-out infinite',
+                    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)'
+                  }}
+                />
+              </div>
+            )}
+            {job.status === 'QUEUED' && (
+              <div className="mt-4 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
+                <div
+                  className="absolute h-full bg-gradient-to-r from-transparent via-yellow-500 to-transparent"
                   style={{
                     width: '50%',
                     animation: 'slideProgress 2s ease-in-out infinite',
