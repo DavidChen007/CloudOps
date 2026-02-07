@@ -1,6 +1,6 @@
 # 多阶段构建 Dockerfile
 # 阶段 1：构建前端应用
-FROM node:18-alpine AS builder
+FROM m.daocloud.io/docker.io/library/node:18-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -23,7 +23,7 @@ ENV VITE_BASE_PATH=${BASE_PATH}
 RUN npm run build
 
 # 阶段 2：使用 Nginx 提供静态文件服务
-FROM nginx:alpine
+FROM m.daocloud.io/docker.io/library/nginx:alpine
 
 # 安装必要的工具（可选）
 RUN apk add --no-cache bash
