@@ -1,7 +1,6 @@
 // API 基础配置
-// 使用空字符串，让 Vite 代理处理请求
-// Vite 代理会将 /api 请求转发到 http://localhost:8023/api/basic-ai
-const API_BASE_URL = '';
+// 直接请求后端接口，不使用代理
+const API_BASE_URL = 'https://saas.btitib.com';
 
 // RestResponse 接口定义
 interface RestResponse<T> {
@@ -12,7 +11,10 @@ interface RestResponse<T> {
 
 // 通用请求函数
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  // 将 /api 路径转换为 /api/basic-ai（与之前的代理规则保持一致）
+  const finalEndpoint = endpoint.replace(/^\/api/, '/api/basic-ai');
+
+  const response = await fetch(`${API_BASE_URL}${finalEndpoint}`, {
     ...options,
     credentials: 'include', // 重要：允许携带cookie
     headers: {

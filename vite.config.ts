@@ -13,14 +13,6 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        proxy: {
-          // 将前端的 /api 请求代理到后端的 /api/basic-ai
-          '/api': {
-            target: 'http://localhost:8023',
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, '/api/basic-ai')
-          }
-        }
       },
       plugins: [react()],
       define: {
