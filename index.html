@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CloudOps Deployer Pro</title>
+    <!-- 运行时配置：Nginx 会动态替换 BASE_PATH_PLACEHOLDER -->
+    <script>
+        window.__APP_CONFIG__ = {
+            BASE_PATH: 'BASE_PATH_PLACEHOLDER'
+        };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <style>
