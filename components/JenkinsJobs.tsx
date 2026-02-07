@@ -52,7 +52,8 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
         lastBuild: job.lastBuildNumber ? `#${job.lastBuildNumber}` : '#0',
         lastTime: job.lastBuildTime ? formatTime(job.lastBuildTime) : 'Never',
         branch: 'master', // 后端暂时没有branch字段，使用默认值
-        stack: job.stack || 'node' // 保存技术栈类型
+        stack: job.stack || 'node', // 保存技术栈类型
+        configMode: job.configMode || 'STANDARD' // 保存配置模式
       }));
 
       setJobs(transformedJobs);
@@ -67,7 +68,9 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
 
   // 格式化持续时间（毫秒转为可读格式）
   const formatDuration = (ms: number): string => {
-    if (!ms) return 'N/A';
+    if (ms === null || ms === undefined) return 'N/A';
+    if (ms === 0) return '< 1s';  // 构建非常快或正在进行中
+
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -146,36 +149,68 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
       // 调用后端接口触发构建
       await jenkinsApi.buildJob(id);
 
-      // 构建触发成功，模拟构建完成（实际应该轮询状态）
-      setTimeout(() => {
-        setJobs(currentJobs =>
-          currentJobs.map(job => {
-            if (job.id === id) {
-              const nextBuildNum = parseInt(job.lastBuild.replace('#', '')) + 1;
-              return {
-                ...job,
-                status: 'SUCCESS',
-                lastDuration: '45s',
-                lastBuild: `#${nextBuildNum}`,
-                lastTime: 'Just now'
-              };
-            }
-            return job;
-          })
-        );
-      }, 3000);
+      // 构建触发成功后，开始轮询构建状态
+      pollBuildStatus(id);
     } catch (error) {
       console.error('Failed to trigger build:', error);
-      // 构建失败，恢复状态
-      setJobs(currentJobs =>
-        currentJobs.map(job =>
-          job.id === id
-            ? { ...job, status: 'FAILURE', lastDuration: 'Failed', lastTime: 'Just now' }
-            : job
-        )
-      );
       alert(`Failed to trigger build: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // 恢复原状态
+      loadJobs();
     }
+  };
+
+  // 轮询构建状态
+  const pollBuildStatus = (jobId: string) => {
+    let pollCount = 0;
+    const maxPolls = 60; // 最多轮询60次（5分钟）
+    const pollInterval = 5000; // 每5秒轮询一次
+
+    const poll = setInterval(async () => {
+      pollCount++;
+
+      try {
+        // 从Jenkins获取Job的实时状态
+        const updatedJobData = await jenkinsApi.getJobStatus(jobId);
+
+        if (updatedJobData) {
+          // 转换数据格式（与loadJobs保持一致）
+          const transformedJob = {
+            id: updatedJobData.id?.toString() || jobId,
+            name: updatedJobData.name || 'Unknown',
+            status: updatedJobData.status || 'UNKNOWN',
+            lastDuration: updatedJobData.duration ? formatDuration(updatedJobData.duration) : 'N/A',
+            lastBuild: updatedJobData.lastBuildNumber ? `#${updatedJobData.lastBuildNumber}` : '#0',
+            lastTime: updatedJobData.lastBuildTime ? formatTime(updatedJobData.lastBuildTime) : 'Never',
+            branch: 'master',
+            stack: updatedJobData.stack || 'node'
+          };
+
+          // 更新单个Job的状态
+          setJobs(currentJobs =>
+            currentJobs.map(job =>
+              job.id === jobId ? transformedJob : job
+            )
+          );
+
+          // 如果构建完成（成功或失败），停止轮询
+          if (transformedJob.status !== 'IN_PROGRESS' && transformedJob.status !== 'PENDING') {
+            clearInterval(poll);
+            console.log(`Build completed with status: ${transformedJob.status}`);
+          }
+        }
+
+        // 达到最大轮询次数，停止轮询
+        if (pollCount >= maxPolls) {
+          clearInterval(poll);
+          console.log('Max poll count reached, stopping poll');
+        }
+      } catch (error) {
+        console.error('Failed to poll build status:', error);
+        // 出错时也停止轮询
+        clearInterval(poll);
+      }
+    }, pollInterval);
   };
 
   const handleSync = async () => {
@@ -394,7 +429,21 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
   };
 
   return (
-    <div className="space-y-6 relative">
+    <>
+      <style>{`
+        @keyframes slideProgress {
+          0% {
+            transform: translateX(-100%);
+          }
+          50% {
+            transform: translateX(200%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+      `}</style>
+      <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -438,7 +487,7 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-slate-800">{job.name}</h4>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusClass(job.status)}`}>
-                      {job.status.replace('_', ' ')}
+                      {job.status === 'IN_PROGRESS' ? 'building' : job.status.replace('_', ' ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 font-medium">
@@ -473,16 +522,30 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
                   >
                     <Terminal size={20} />
                   </button>
-                  {job.stack === 'node' && (
+                  {/* 标准模式：显示表单编辑按钮 */}
+                  {job.configMode === 'STANDARD' && (
                     <button
                       onClick={() => {
                         setWizardEditingJobId(job.id);
                         setShowWizardPage(true);
                       }}
-                      title="Configuration"
+                      title="Edit Configuration (Form)"
                       className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all"
                     >
                       <Settings size={20} />
+                    </button>
+                  )}
+                  {/* 自定义模式：显示XML编辑按钮 */}
+                  {job.configMode === 'CUSTOM' && (
+                    <button
+                      onClick={() => {
+                        alert('XML编辑功能开发中...\n请使用 Jenkins Web UI 编辑自定义配置');
+                        // TODO: 实现XML编辑器
+                      }}
+                      title="Edit XML Configuration"
+                      className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all"
+                    >
+                      <FileText size={20} />
                     </button>
                   )}
                   <button
@@ -497,8 +560,15 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
             </div>
             
             {job.status === 'IN_PROGRESS' && (
-              <div className="mt-4 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-indigo-500 h-full w-2/3 animate-pulse"></div>
+              <div className="mt-4 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
+                <div
+                  className="absolute h-full bg-gradient-to-r from-transparent via-indigo-500 to-transparent"
+                  style={{
+                    width: '50%',
+                    animation: 'slideProgress 2s ease-in-out infinite',
+                    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)'
+                  }}
+                />
               </div>
             )}
           </div>
@@ -808,7 +878,8 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
           <div className="bg-white w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
             <PipelineWizard
               editingJobId={wizardEditingJobId}
-              readOnly={wizardEditingJobId !== null} // 编辑模式为只读，新建模式可编辑
+              readOnly={false} // 允许编辑
+              isEditMode={wizardEditingJobId !== null} // 标记是否为编辑模式
               onBack={() => {
                 setShowWizardPage(false);
                 setWizardEditingJobId(null);
@@ -819,6 +890,7 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

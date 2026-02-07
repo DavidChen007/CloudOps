@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MOCK_DEPLOYMENTS, MOCK_PODS, MOCK_INGRESS, MOCK_SERVICES } from '../constants';
 import { Search, Filter, RefreshCw, Layers, Box, Globe, Share2 } from 'lucide-react';
 import { k8sApi } from '../services/api';
@@ -11,14 +11,52 @@ const K8sExplorer: React.FC = () => {
   const [pods, setPods] = useState<Pod[]>(MOCK_PODS);
   const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
   const [ingresses, setIngresses] = useState<Ingress[]>(MOCK_INGRESS);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set()); // 跟踪已加载的tab
 
+  // 只加载当前激活tab的资源
+  const loadCurrentTabResources = useCallback(async (name?: string) => {
+    try {
+      setIsLoading(true);
+
+      switch (activeTab) {
+        case 'deployments':
+          const deploymentsData = await k8sApi.getDeployments(name).catch(() => MOCK_DEPLOYMENTS);
+          setDeployments(transformDeployments(deploymentsData));
+          break;
+        case 'pods':
+          const podsData = await k8sApi.getPods(name).catch(() => MOCK_PODS);
+          setPods(transformPods(podsData));
+          break;
+        case 'services':
+          const servicesData = await k8sApi.getServices(name).catch(() => MOCK_SERVICES);
+          setServices(transformServices(servicesData));
+          break;
+        case 'ingress':
+          const ingressesData = await k8sApi.getIngresses(name).catch(() => MOCK_INGRESS);
+          setIngresses(transformIngresses(ingressesData));
+          break;
+      }
+
+      // 标记当前tab已加载
+      setLoadedTabs(prev => new Set(prev).add(activeTab));
+    } catch (error) {
+      console.error(`Failed to load ${activeTab}:`, error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeTab]); // 添加activeTab作为依赖
+
+  // 页面加载和切换tab时加载对应资源
   useEffect(() => {
-    loadK8sResources();
-  }, []);
+    if (!loadedTabs.has(activeTab)) {
+      loadCurrentTabResources();
+    }
+  }, [activeTab, loadedTabs, loadCurrentTabResources]); // 添加所有依赖
 
-  const loadK8sResources = async (name?: string) => {
+  // 刷新所有资源（手动触发）
+  const refreshAllResources = async (name?: string) => {
     try {
       setIsLoading(true);
       const [deploymentsData, podsData, servicesData, ingressesData] = await Promise.all([
@@ -28,23 +66,35 @@ const K8sExplorer: React.FC = () => {
         k8sApi.getIngresses(name).catch(() => MOCK_INGRESS),
       ]);
 
-      // 转换后端数据格式为前端期望的格式
       setDeployments(transformDeployments(deploymentsData));
       setPods(transformPods(podsData));
       setServices(transformServices(servicesData));
       setIngresses(transformIngresses(ingressesData));
+
+      // 标记所有tab已加载
+      setLoadedTabs(new Set(['deployments', 'pods', 'services', 'ingress']));
     } catch (error) {
-      console.error('Failed to load K8s resources:', error);
+      console.error('Failed to refresh K8s resources:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 防抖搜索
+  const debounceTimer = React.useRef<NodeJS.Timeout>();
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setSearchQuery(query);
-    // 实时搜索
-    loadK8sResources(query || undefined);
+
+    // 清除之前的定时器
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    // 500ms后执行搜索
+    debounceTimer.current = setTimeout(() => {
+      loadCurrentTabResources(query || undefined);
+    }, 500);
   };
 
   // 转换 Deployments 数据
@@ -258,8 +308,9 @@ const K8sExplorer: React.FC = () => {
             <Filter size={18} />
           </button>
           <button
-            onClick={loadK8sResources}
+            onClick={() => refreshAllResources(searchQuery || undefined)}
             disabled={isLoading}
+            title="Refresh all resources"
             className={`p-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-all ${isLoading ? 'animate-spin' : ''}`}
           >
             <RefreshCw size={18} />

@@ -1,6 +1,7 @@
 // API 基础配置
 // 直接请求后端接口，不使用代理
 const API_BASE_URL = 'https://saas.btitib.com';
+// const API_BASE_URL = 'http://localhost:8023';
 
 // RestResponse 接口定义
 interface RestResponse<T> {
@@ -53,6 +54,7 @@ export const jenkinsApi = {
     return request(`/api/cloudops/jenkins/jobs${params}`);
   },
   getJob: (id: string) => request(`/api/cloudops/jenkins/jobs/${id}`),
+  getJobStatus: (id: string) => request(`/api/cloudops/jenkins/job/${id}/status`),  // 从Jenkins获取实时状态
   getJobConfig: (id: string) => request(`/api/cloudops/jenkins/job/${id}`),  // 获取Job配置详情
   buildJob: (id: string) => request(`/api/cloudops/jenkins/job/${id}/build`, { method: 'POST' }),
   getBuilds: (id: string) => request(`/api/cloudops/jenkins/job/${id}/builds`),
@@ -83,7 +85,7 @@ export const jenkinsApi = {
     body: JSON.stringify(data),
   }),
   syncJobs: () => request('/api/cloudops/jenkins/sync', { method: 'POST' }),
-  createJobWithK8s: (data: {
+  createJob: (data: {
     jobName: string;
     configXml: string;
     stack: string;
@@ -97,11 +99,55 @@ export const jenkinsApi = {
     buildDirectory?: string;
     port?: number;
     replicas?: number;
-  }) => request('/api/cloudops/jenkins/job/deploy-with-xml', {
+    configMode?: 'STANDARD' | 'CUSTOM';  // 配置模式：STANDARD-系统生成，CUSTOM-用户自定义
+  }) => request('/api/cloudops/jenkins/job/create', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
   deleteJob: (id: string) => request(`/api/cloudops/jenkins/job/${id}`, { method: 'DELETE' }),
+  updateJobWithDeployment: (id: string, data: {
+    name: string;
+    stack: string;
+    gitRepoUrl: string;
+    gitBranch: string;
+    gitCredentialsId: string;
+    dockerImageName: string;
+    dockerfilePath: string;
+    dockerBuildContext?: string;
+    buildDirectory?: string;
+    replicas?: number;
+    containerPort?: number;
+    servicePort?: number;
+    pathPrefix?: string;
+  }) => request(`/api/cloudops/jenkins/job/${id}/deploy`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  updateJobWithCustomXml: (id: string, customConfigXml: string) => request(`/api/cloudops/jenkins/job/${id}/custom-xml`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'text/plain',
+    },
+    body: customConfigXml,
+  }),
+  switchToStandardMode: (id: string, data: {
+    name: string;
+    stack: string;
+    gitRepoUrl: string;
+    gitBranch: string;
+    gitCredentialsId: string;
+    dockerImageName: string;
+    dockerfilePath: string;
+    dockerBuildContext?: string;
+    buildDirectory?: string;
+    replicas?: number;
+    containerPort?: number;
+    servicePort?: number;
+    pathPrefix?: string;
+  }) => request(`/api/cloudops/jenkins/job/${id}/switch-to-standard`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
 };
 
 // K8s API

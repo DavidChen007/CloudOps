@@ -9,7 +9,8 @@ import { MOCK_DEPLOYMENTS, MOCK_PODS, MOCK_SERVICES, MOCK_INGRESS } from '../con
 interface PipelineWizardProps {
   editingJobId?: string | null;
   onBack?: () => void;
-  readOnly?: boolean; // 新增：只读模式
+  readOnly?: boolean; // 只读模式（查看）
+  isEditMode?: boolean; // 编辑模式（某些字段不可修改）
 }
 
 interface GitCredential {
@@ -19,14 +20,15 @@ interface GitCredential {
   gitUsername: string;
 }
 
-const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, readOnly = false }) => {
+const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, readOnly = false, isEditMode = false }) => {
   const [activeStack, setActiveStack] = useState<StackType>('node');
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showConfigEditor, setShowConfigEditor] = useState(false);
+  const [configMode, setConfigMode] = useState<'STANDARD' | 'CUSTOM'>('STANDARD'); // 明确的配置模式
   const [configXml, setConfigXml] = useState<string>('');
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [gitCredentials, setGitCredentials] = useState<GitCredential[]>([]);
+  const [jobNameError, setJobNameError] = useState<string>(''); // Job名称校验错误信息
   const [params, setParams] = useState<PipelineParams & { registry: string, sshTarget: string, pathPrefix: string, buildDirectory: string, containerPort: number }>({
     gitRepoUrl: '',
     gitBuildRef: 'master',
@@ -89,9 +91,9 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
     setConfigXml('');
     setExplanation('');
     setShowScriptModal(false);
-    setShowConfigEditor(false);
     setShowAdvanced(false);
     setActiveStack('node');
+    setConfigMode('STANDARD'); // 重置为标准模式
   };
 
   // 加载Job配置（编辑模式）
@@ -121,7 +123,11 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
       // 设置config.xml到编辑器（不自动打开）
       if (config.configXml) {
         setConfigXml(config.configXml);
-        // 用户可以手动点击"Advanced Config"查看
+      }
+
+      // 设置配置模式
+      if (config.configMode) {
+        setConfigMode(config.configMode);
       }
 
       // 设置所有参数（用于回显）
@@ -201,6 +207,52 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setParams(prev => ({ ...prev, [name]: value }));
+
+    // 实时校验Job名称
+    if (name === 'dockerImageName') {
+      validateJobName(value);
+    }
+  };
+
+  // Job名称实时校验
+  const validateJobName = (jobName: string) => {
+    const trimmedName = jobName.trim();
+
+    // 空值不显示错误(允许用户清空输入)
+    if (!trimmedName) {
+      setJobNameError('');
+      return false;
+    }
+
+    // 长度检查
+    if (trimmedName.length > 63) {
+      setJobNameError('❌ 名称过长(最多63个字符)');
+      return false;
+    }
+
+    // Kubernetes命名规范检查
+    const k8sNamePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+    if (!k8sNamePattern.test(trimmedName)) {
+      // 具体的错误提示
+      if (/[A-Z]/.test(trimmedName)) {
+        setJobNameError('❌ 不能包含大写字母');
+      } else if (trimmedName.startsWith('-')) {
+        setJobNameError('❌ 不能以短划线(-)开头');
+      } else if (trimmedName.endsWith('-')) {
+        setJobNameError('❌ 不能以短划线(-)结尾');
+      } else if (/[_]/.test(trimmedName)) {
+        setJobNameError('❌ 不能包含下划线(_)，请使用短划线(-)');
+      } else if (/[^a-z0-9-]/.test(trimmedName)) {
+        setJobNameError('❌ 只能包含小写字母、数字、短划线(-)');
+      } else {
+        setJobNameError('❌ 名称格式不符合规范');
+      }
+      return false;
+    }
+
+    // 校验通过
+    setJobNameError('✅ 名称格式正确');
+    return true;
   };
 
   const copyToClipboard = () => {
@@ -242,36 +294,12 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
         .replace(/&amp;/g, '&');
 
       setConfigXml(decodedTemplate);
-      setShowConfigEditor(true);
     } catch (error) {
       console.error('Failed to load template:', error);
       alert(`Failed to load template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoadingTemplate(false);
     }
-  };
-
-  // 生成Jenkins Job的config.xml
-  const generateJobConfigXml = (jenkinsfile: string) => {
-    const escapedJenkinsfile = jenkinsfile
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-
-    return `<?xml version='1.0' encoding='UTF-8'?>
-<flow-definition plugin="workflow-job@1540.v295eccc9778f">
-  <description>${params.dockerImageName} Pipeline</description>
-  <keepDependencies>false</keepDependencies>
-  <properties/>
-  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@4183.v94b_6fd39da_c1">
-    <script>${escapedJenkinsfile}</script>
-    <sandbox>true</sandbox>
-  </definition>
-  <triggers/>
-  <disabled>false</disabled>
-</flow-definition>`;
   };
 
   const handleCommit = async () => {
@@ -284,46 +312,16 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
         return;
       }
 
-      // 验证Job名称格式（只允许字母、数字、连字符和下划线）
-      const invalidCharsPattern = /[/\\:*?"<>|%!@#$^&()+={}[\];',~]/;
-      if (invalidCharsPattern.test(jobName)) {
-        alert('Job名称包含非法字符！\n只能使用字母、数字、连字符(-)和下划线(_)');
+      // 使用实时校验函数进行最终校验
+      if (!validateJobName(jobName)) {
+        alert('Job名称格式不正确！\n\n请根据输入框下方的提示修正名称格式。');
         return;
       }
 
-      // 如果没有加载模板，先生成一个
-      let finalConfigXml = configXml;
-      if (!finalConfigXml) {
-        // 如果没有预览过，先生成Jenkinsfile
-        if (!previewJenkinsfile) {
-          const stackMapping: Record<StackType, string> = {
-            'node': 'nodejs',
-            'java': 'java',
-            'python': 'python'
-          };
-
-          const jenkinsfile = await jenkinsApi.generateJenkinsfilePreview({
-            name: params.dockerImageName,
-            stack: stackMapping[activeStack],
-            gitRepoUrl: params.gitRepoUrl,
-            gitBranch: params.gitBuildRef,
-            gitCredentialsId: params.credentialsId,
-            dockerImageName: params.dockerImageName,
-            dockerfilePath: params.dockerfilePath,
-            dockerBuildContext: params.dockerBuildContext || '.',
-            buildDirectory: params.buildDirectory || undefined,
-            replicas: 1,
-            containerPort: params.containerPort || 80,  // 使用用户配置的端口
-            servicePort: params.containerPort || 80,    // 使用用户配置的端口
-          });
-          setPreviewJenkinsfile(jenkinsfile);
-          finalConfigXml = generateJobConfigXml(jenkinsfile);
-        } else {
-          finalConfigXml = generateJobConfigXml(previewJenkinsfile);
-        }
-      } else {
-        // 如果是编辑过的模板，直接使用（已经是有效的XML）
-        finalConfigXml = configXml;
+      // 自定义模式下，验证config.xml不能为空
+      if (configMode === 'CUSTOM' && !configXml.trim()) {
+        alert('自定义模式下，配置XML不能为空！');
+        return;
       }
 
       // 映射前端stack到后端格式
@@ -333,24 +331,47 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
         'python': 'python'
       };
 
-      // 调用后端API创建Jenkins Job和K8s资源
-      await jenkinsApi.createJobWithK8s({
-        jobName: jobName,
-        configXml: finalConfigXml,
-        stack: stackMapping[activeStack],
-        gitRepoUrl: params.gitRepoUrl || undefined,
-        gitBranch: params.gitBuildRef || undefined,
-        gitCredentialsId: params.credentialsId || undefined,
-        dockerImageName: jobName,
-        dockerfilePath: params.dockerfilePath || undefined,
-        dockerBuildContext: params.dockerBuildContext || '.',
-        pathPrefix: params.pathPrefix || undefined,
-        buildDirectory: params.buildDirectory || undefined,
-        port: params.containerPort,
-        replicas: 1,
-      });
+      // 根据模式调用不同的API
+      if (isEditMode && editingJobId) {
+        // 编辑模式：调用更新API
+        await jenkinsApi.updateJobWithDeployment(editingJobId, {
+          name: jobName,
+          stack: stackMapping[activeStack],
+          gitRepoUrl: params.gitRepoUrl,
+          gitBranch: params.gitBuildRef,
+          gitCredentialsId: params.credentialsId,
+          dockerImageName: jobName,
+          dockerfilePath: params.dockerfilePath,
+          dockerBuildContext: params.dockerBuildContext || '.',
+          buildDirectory: params.buildDirectory || undefined,
+          replicas: 1,
+          containerPort: params.containerPort || 80,
+          servicePort: params.containerPort || 80,
+          pathPrefix: params.pathPrefix || undefined,
+        });
 
-      alert(`Pipeline "${jobName}" committed successfully! Jenkins Job and Kubernetes resources have been created.`);
+        alert(`Pipeline "${jobName}" updated successfully! Jenkins Job and Kubernetes resources have been updated.`);
+      } else {
+        // 创建模式：根据configMode决定传递的参数
+        await jenkinsApi.createJob({
+          jobName: jobName,
+          configXml: configMode === 'CUSTOM' ? configXml : '',  // 自定义模式传XML，标准模式传空
+          stack: stackMapping[activeStack],
+          gitRepoUrl: params.gitRepoUrl || undefined,
+          gitBranch: params.gitBuildRef || undefined,
+          gitCredentialsId: params.credentialsId || undefined,
+          dockerImageName: jobName,
+          dockerfilePath: params.dockerfilePath || undefined,
+          dockerBuildContext: params.dockerBuildContext || '.',
+          pathPrefix: params.pathPrefix || undefined,
+          buildDirectory: params.buildDirectory || undefined,
+          port: params.containerPort,
+          replicas: 1,
+          configMode: configMode,  // 使用configMode状态
+        });
+
+        alert(`Pipeline "${jobName}" committed successfully! Jenkins Job and Kubernetes resources have been created.`);
+      }
 
       // 重置表单，准备创建下一个job
       resetForm();
@@ -374,13 +395,16 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
             <Settings2 size={20} className="text-indigo-600" />
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                {readOnly ? 'View Job Configuration' : editingJobId ? 'Edit Job Configuration' : 'Create New Job'}
+                {readOnly ? 'View Job Configuration' : isEditMode ? 'Edit Job Configuration' : 'Create New Job'}
               </h2>
               {loadingConfig && (
                 <p className="text-xs text-slate-500">Loading configuration...</p>
               )}
               {readOnly && !loadingConfig && (
                 <p className="text-xs text-amber-600 font-medium">Read-only mode - Configuration cannot be modified</p>
+              )}
+              {isEditMode && !readOnly && !loadingConfig && (
+                <p className="text-xs text-blue-600 font-medium">Edit mode - Some fields cannot be modified</p>
               )}
             </div>
           </div>
@@ -397,61 +421,195 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
           {/* Stack Selector */}
-          <div className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-2xl self-start shadow-sm">
-            {stacks.map(stack => (
-              <button
-                key={stack.id}
-                onClick={() => !readOnly && setActiveStack(stack.id)}
-                disabled={readOnly}
-                className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${
-                  activeStack === stack.id
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100'
-                    : 'text-slate-600 hover:bg-slate-50'
-                } ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
-              >
-                {stack.icon}
-                {stack.label}
-              </button>
-            ))}
+          <div>
+            {isEditMode && (
+              <p className="text-xs text-red-500 font-medium mb-2">
+                ⚠️ Technology stack cannot be modified in edit mode
+              </p>
+            )}
+            <div className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-2xl self-start shadow-sm">
+              {stacks.map(stack => (
+                <button
+                  key={stack.id}
+                  onClick={() => !readOnly && !isEditMode && setActiveStack(stack.id)}
+                  disabled={readOnly || isEditMode}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+                    activeStack === stack.id
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  } ${(readOnly || isEditMode) ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  {stack.icon}
+                  {stack.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* 配置模式选择器 */}
+          {!isEditMode && !readOnly && (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
+              <h4 className="text-sm font-bold text-slate-700 mb-3">选择配置模式</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  onClick={() => setConfigMode('STANDARD')}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    configMode === 'STANDARD'
+                      ? 'border-indigo-500 bg-white shadow-lg'
+                      : 'border-slate-200 bg-white/50 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      configMode === 'STANDARD' ? 'border-indigo-500' : 'border-slate-300'
+                    }`}>
+                      {configMode === 'STANDARD' && (
+                        <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-800">标准模式</span>
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">推荐</span>
+                  </div>
+                  <p className="text-xs text-slate-600 ml-8">
+                    使用表单填写配置参数，系统自动生成Jenkins Job配置
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setConfigMode('CUSTOM')}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    configMode === 'CUSTOM'
+                      ? 'border-purple-500 bg-white shadow-lg'
+                      : 'border-slate-200 bg-white/50 hover:border-purple-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      configMode === 'CUSTOM' ? 'border-purple-500' : 'border-slate-300'
+                    }`}>
+                      {configMode === 'CUSTOM' && (
+                        <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-800">自定义模式</span>
+                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">高级</span>
+                  </div>
+                  <p className="text-xs text-slate-600 ml-8">
+                    直接编辑Jenkins Job XML配置，适合有特殊需求的场景
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Configuration Form */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-slate-800">
-            {readOnly ? 'Pipeline Configuration (Read-Only)' : 'Pipeline Config Wizard'}
+            {readOnly ? '流水线配置 (只读)' : configMode === 'STANDARD' ? '标准模式配置' : '自定义模式配置'}
           </h3>
           <div className="flex gap-3">
-            <button
-              onClick={handlePreviewPipeline}
-              disabled={loadingPreview}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-sm font-bold hover:bg-slate-100 hover:text-slate-900 transition-colors disabled:opacity-50"
-            >
-              <Eye size={16} />
-              {loadingPreview ? 'Loading...' : 'Preview Pipeline'}
-            </button>
-            <button
-              onClick={handleLoadTemplate}
-              disabled={loadingTemplate}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 disabled:opacity-50 transition-colors"
-            >
-              <Settings2 size={16} />
-              {loadingTemplate ? 'Loading...' : 'Advanced Config'}
-            </button>
-            {!readOnly && (
+            {configMode === 'STANDARD' && (
+              <>
+                <button
+                  onClick={handlePreviewPipeline}
+                  disabled={loadingPreview || readOnly}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-sm font-bold hover:bg-slate-100 hover:text-slate-900 transition-colors disabled:opacity-50"
+                >
+                  <Eye size={16} />
+                  {loadingPreview ? '加载中...' : '预览流水线'}
+                </button>
+                {!readOnly && (
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={loadingAI}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 text-green-600 text-sm font-bold hover:bg-green-100 disabled:opacity-50 transition-colors"
+                  >
+                    <Wand2 size={16} />
+                    {loadingAI ? '分析中...' : 'AI 建议'}
+                  </button>
+                )}
+              </>
+            )}
+            {configMode === 'CUSTOM' && !readOnly && (
               <button
-                onClick={handleAnalyze}
-                disabled={loadingAI}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 text-green-600 text-sm font-bold hover:bg-green-100 disabled:opacity-50 transition-colors"
+                onClick={handleLoadTemplate}
+                disabled={loadingTemplate}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-600 text-sm font-bold hover:bg-purple-100 disabled:opacity-50 transition-colors"
               >
-                <Wand2 size={16} />
-                {loadingAI ? 'Analyzing...' : 'AI Advisor'}
+                <FileCode size={16} />
+                {loadingTemplate ? '加载中...' : '加载模板'}
               </button>
             )}
           </div>
         </div>
 
         <div className="space-y-6">
+          {/* 自定义模式：显示XML编辑器 */}
+          {configMode === 'CUSTOM' && (
+            <div className="space-y-4">
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">
+                  Job名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  name="dockerImageName"
+                  value={params.dockerImageName}
+                  onChange={handleInputChange}
+                  readOnly={readOnly || isEditMode}
+                  disabled={readOnly || isEditMode}
+                  placeholder="例如: my-app, api-service, web-01"
+                  className={`w-full px-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 outline-none font-medium transition-all ${
+                    (readOnly || isEditMode)
+                      ? 'cursor-not-allowed opacity-60 border-slate-200'
+                      : jobNameError.startsWith('❌')
+                      ? 'border-red-300 focus:ring-red-500'
+                      : jobNameError.startsWith('✅')
+                      ? 'border-green-300 focus:ring-green-500'
+                      : 'border-slate-200 focus:ring-indigo-500'
+                  }`}
+                />
+                {!isEditMode && (
+                  <div className="mt-2 space-y-1">
+                    {jobNameError && (
+                      <p className={`text-xs font-medium ${
+                        jobNameError.startsWith('❌')
+                          ? 'text-red-600'
+                          : 'text-green-600'
+                      }`}>
+                        {jobNameError}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-500">
+                      <span className="font-medium">规则:</span> 1-63个字符，小写字母、数字、短划线(-)，不能以短划线开头或结尾
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">
+                  Jenkins Job XML配置 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={configXml}
+                  onChange={(e) => setConfigXml(e.target.value)}
+                  readOnly={readOnly}
+                  disabled={readOnly}
+                  className={`w-full h-96 font-mono text-sm bg-slate-50 border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-purple-500 outline-none resize-none ${readOnly ? 'cursor-not-allowed opacity-80' : ''}`}
+                  placeholder="点击上方'加载模板'按钮加载XML模板，或直接粘贴您的config.xml内容..."
+                  spellCheck={false}
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  💡 提示: 您可以点击'加载模板'按钮生成基础模板，然后根据需要修改
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 标准模式：显示表单字段 */}
+          {configMode === 'STANDARD' && (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="col-span-1 md:col-span-2">
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Git Repository URL</label>
@@ -533,16 +691,45 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
             */}
 
             <div className="col-span-1 md:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Image Base Name</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">
+                Image Base Name
+                {isEditMode && <span className="ml-2 text-red-500">(Cannot be modified)</span>}
+              </label>
               <input
                 name="dockerImageName"
                 value={params.dockerImageName}
                 onChange={handleInputChange}
-                readOnly={readOnly}
-                disabled={readOnly}
-                placeholder="e.g., my-app, api-service"
-                className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-all ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
+                readOnly={readOnly || isEditMode}
+                disabled={readOnly || isEditMode}
+                placeholder="e.g., my-app, api-service, web-01"
+                className={`w-full px-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 outline-none font-medium transition-all ${
+                  (readOnly || isEditMode)
+                    ? 'cursor-not-allowed opacity-60 border-slate-200'
+                    : jobNameError.startsWith('❌')
+                    ? 'border-red-300 focus:ring-red-500'
+                    : jobNameError.startsWith('✅')
+                    ? 'border-green-300 focus:ring-green-500'
+                    : 'border-slate-200 focus:ring-indigo-500'
+                }`}
               />
+              {!isEditMode && (
+                <div className="mt-2 space-y-1">
+                  {/* 实时校验结果 */}
+                  {jobNameError && (
+                    <p className={`text-xs font-medium ${
+                      jobNameError.startsWith('❌')
+                        ? 'text-red-600'
+                        : 'text-green-600'
+                    }`}>
+                      {jobNameError}
+                    </p>
+                  )}
+                  {/* 命名规则提示 */}
+                  <p className="text-xs text-slate-500">
+                    <span className="font-medium">规则:</span> 1-63个字符，小写字母、数字、短划线(-)，不能以短划线开头或结尾
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -632,12 +819,14 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
               )}
             </div>
           )}
-        </div>
+          </>
+        )}
 
+        {/* AI建议和提交按钮 */}
         {explanation && (
           <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl animate-in fade-in slide-in-from-bottom-4">
             <div className="flex items-center gap-2 mb-2 text-indigo-900 font-bold text-sm">
-              <Wand2 size={16} /> AI Summary
+              <Wand2 size={16} /> AI 建议
             </div>
             <div className="text-xs text-indigo-800 leading-relaxed font-medium whitespace-pre-wrap">{explanation}</div>
           </div>
@@ -646,14 +835,14 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
         {!readOnly && (
           <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center gap-4">
             <div className="text-sm text-slate-500">
-              <span className="font-bold">💡 Tip:</span> Click "Preview Pipeline" to see the generated Jenkinsfile before committing.
+              <span className="font-bold">💡 提示:</span> {configMode === 'STANDARD' ? '点击预览流水线按钮查看生成的Jenkinsfile' : '确保XML配置正确后再提交'}
             </div>
             <button
               onClick={handleCommit}
               className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-900/20 active:scale-95 group"
             >
               <PlayCircle size={20} className="group-hover:rotate-[360deg] transition-transform duration-700" />
-              Commit & Deploy
+              提交并部署
             </button>
           </div>
         )}
@@ -711,61 +900,7 @@ const PipelineWizard: React.FC<PipelineWizardProps> = ({ editingJobId, onBack, r
           </div>
         </div>
       )}
-
-      {/* Config.xml Editor Modal */}
-      {showConfigEditor && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="flex flex-col h-[85vh] w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-slate-200">
-              <div className="flex items-center gap-3">
-                <FileCode size={20} className="text-indigo-600" />
-                <h3 className="text-slate-800 font-bold">
-                  {readOnly ? 'Advanced Config - View Jenkins Job XML' : 'Advanced Config - Edit Jenkins Job XML'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowConfigEditor(false)}
-                className="p-2 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
-              <textarea
-                value={configXml}
-                onChange={(e) => setConfigXml(e.target.value)}
-                readOnly={readOnly}
-                disabled={readOnly}
-                className={`w-full h-full font-mono text-sm bg-slate-50 border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-none ${readOnly ? 'cursor-not-allowed opacity-80' : ''}`}
-                placeholder="Config.xml will appear here..."
-                spellCheck={false}
-              />
-            </div>
-            <div className="p-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center gap-4">
-              <div className="text-xs text-slate-500">
-                <span className="font-bold">Tip:</span> {readOnly ? 'This is a read-only view of the Jenkins Job XML configuration.' : 'You can edit the XML to add custom build commands or modify pipeline stages.'}
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowConfigEditor(false)}
-                  className="px-6 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors"
-                >
-                  {readOnly ? 'Close' : 'Cancel'}
-                </button>
-                {!readOnly && (
-                  <button
-                    onClick={handleCommit}
-                    className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 group"
-                  >
-                    <PlayCircle size={20} className="group-hover:rotate-[360deg] transition-transform duration-700" />
-                    Commit & Deploy
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
