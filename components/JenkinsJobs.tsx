@@ -117,6 +117,8 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
         return <CheckCircle2 size={18} className="text-green-500" />;
       case 'FAILURE':
         return <XCircle size={18} className="text-red-500" />;
+      case 'QUEUED':
+        return <Clock size={18} className="text-yellow-500" />;
       case 'IN_PROGRESS':
         return <Clock size={18} className="text-blue-500 animate-spin" />;
       case 'ABORTED':
@@ -130,6 +132,7 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
     switch (status) {
       case 'SUCCESS': return 'bg-green-50 text-green-700 border-green-100';
       case 'FAILURE': return 'bg-red-50 text-red-700 border-red-100';
+      case 'QUEUED': return 'bg-yellow-50 text-yellow-700 border-yellow-100';
       case 'IN_PROGRESS': return 'bg-blue-50 text-blue-700 border-blue-100';
       default: return 'bg-slate-50 text-slate-700 border-slate-100';
     }
@@ -194,7 +197,9 @@ const JenkinsJobs: React.FC<JenkinsJobsProps> = ({ onViewChange }) => {
           );
 
           // 如果构建完成（成功或失败），停止轮询
-          if (transformedJob.status !== 'IN_PROGRESS' && transformedJob.status !== 'PENDING') {
+          // 非最终状态：QUEUED（队列中）、IN_PROGRESS（构建中）、PENDING（待处理）
+          const nonFinalStatuses = ['QUEUED', 'IN_PROGRESS', 'PENDING'];
+          if (!nonFinalStatuses.includes(transformedJob.status)) {
             clearInterval(poll);
             console.log(`Build completed with status: ${transformedJob.status}`);
           }
