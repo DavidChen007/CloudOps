@@ -1,6 +1,6 @@
 # 多阶段构建 Dockerfile
 # 阶段 1：构建前端应用
-FROM node:18-alpine AS builder
+FROM m.daocloud.io/docker.io/library/node:18-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
